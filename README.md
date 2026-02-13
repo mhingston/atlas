@@ -116,6 +116,7 @@ Versioning overview: `docs/VERSIONING.md`
 
 - `docs/README.md`
 - `docs/configuration.md`
+- `docs/workflow-authoring.md`
 - `docs/ai-integration.md`
 - `docs/provider-routing.md`
 - `docs/curation.md`

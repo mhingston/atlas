@@ -2,6 +2,7 @@
 
 - `configuration.md`
 - `getting-started.md`
+- `workflow-authoring.md`
 - `ai-integration.md`
 - `provider-routing.md`
 - `curation.md`
