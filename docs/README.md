@@ -1,6 +1,7 @@
 # Docs Index
 
 - `configuration.md`
+- `getting-started.md`
 - `ai-integration.md`
 - `provider-routing.md`
 - `curation.md`

@@ -114,6 +114,7 @@ Versioning overview: `docs/VERSIONING.md`
 
 ## Docs
 
+- `docs/README.md`
 - `docs/configuration.md`
 - `docs/ai-integration.md`
 - `docs/provider-routing.md`
