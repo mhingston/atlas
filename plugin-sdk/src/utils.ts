@@ -253,11 +253,11 @@ export function createWorkflowPlugin(
  */
 export function createSinkPlugin(
   id: string,
-  flushFn: SinkPlugin["flush"],
+  handleFn: SinkPlugin["handle"],
 ): SinkPlugin {
   return {
     id,
-    flush: flushFn,
+    handle: handleFn,
   };
 }
 

@@ -6,6 +6,8 @@ import { ReadOnlyRepo } from "./core/repo";
 import { Writer } from "./core/writer";
 import { FlushLoop } from "./jobs/loop";
 import { Scheduler } from "./jobs/scheduler";
+import { loadPluginConfig } from "./plugins/external/config";
+import { ExternalPluginRuntime } from "./plugins/external/runtime";
 import { PluginRegistry } from "./plugins/registry";
 
 import { logSink } from "./plugins/sinks/log";
@@ -40,6 +42,7 @@ async function main() {
   const commands = new CommandQueue();
   const repo = new ReadOnlyRepo(db);
   const registry = new PluginRegistry();
+  const externalRuntime = new ExternalPluginRuntime(registry);
 
   // 3. Register plugins
   logInfo("atlas.plugins.register");
@@ -61,6 +64,10 @@ async function main() {
   registry.registerSource(mockSource);
   registry.registerSource(memoryFilesSource);
   registry.registerSink(logSink);
+
+  // 3.5 Load external plugins
+  const externalConfigs = loadPluginConfig();
+  await externalRuntime.loadAll(externalConfigs);
 
   // 4. Start flush loop (owns the writer)
   const flushLoop = new FlushLoop(commands, writer, 100);
@@ -88,6 +95,7 @@ async function main() {
     scheduler.stop();
     flushLoop.stop();
     flushLoop.flushOnce(); // Flush remaining commands
+    void externalRuntime.shutdownAll();
     db.close();
     process.exit(0);
   });

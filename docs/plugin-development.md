@@ -131,7 +131,7 @@ Users install with:
 npm install @yourname/my-atlas-plugin
 ```
 
-And configure:
+And configure in `atlas.config.json`:
 ```json
 {
   "plugins": ["@yourname/my-atlas-plugin"]
@@ -140,14 +140,14 @@ And configure:
 
 #### Option B: GitHub
 
-Push to GitHub and users can load with:
+Push to GitHub and users can load with `atlas.config.json`:
 ```json
 {
   "plugins": ["github:yourusername/my-atlas-plugin"]
 }
 ```
 
-Or pin to a specific version:
+Or pin to a specific version in `atlas.config.json`:
 ```json
 {
   "plugins": ["github:yourusername/my-atlas-plugin#v1.0.0"]

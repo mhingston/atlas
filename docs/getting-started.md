@@ -38,4 +38,16 @@ export OPENAI_API_KEY=sk-...
 bun run dev
 ```
 
+## External Plugins (Optional)
+
+Create `atlas.config.json`:
+
+```json
+{
+  "plugins": ["github:yourusername/my-atlas-plugin"]
+}
+```
+
+See `plugin-development.md` for full details.
+
 More provider options: `ai-integration.md`

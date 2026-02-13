@@ -150,10 +150,8 @@ Sinks send data to external systems:
 ```typescript
 import { createSinkPlugin } from '@mhingston5/atlas-plugin-sdk';
 
-const sink = createSinkPlugin('my.sink', async (ctx, artifacts) => {
-  for (const artifact of artifacts) {
-    await sendToExternalSystem(artifact);
-  }
+const sink = createSinkPlugin('my.sink', async (domainEvent, ctx) => {
+  await sendToExternalSystem(domainEvent);
 });
 ```
 

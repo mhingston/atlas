@@ -60,62 +60,195 @@ export type Job = {
   log?: Record<string, unknown> | null;
 };
 
+export type DomainEvent = {
+  id: string;
+  type: string;
+  created_at: IsoDate;
+  aggregate_id?: string | null;
+  payload: Record<string, unknown>;
+};
+
+export type TraceEvent = {
+  id: string;
+  trace_id: string;
+  job_id?: string | null;
+  workflow_id?: string | null;
+  kind: string;
+  message?: string | null;
+  span_id?: string | null;
+  parent_span_id?: string | null;
+  status?: string | null;
+  started_at?: IsoDate | null;
+  ended_at?: IsoDate | null;
+  duration_ms?: number | null;
+  data: Record<string, unknown>;
+  created_at: IsoDate;
+};
+
+export type NewArtifact = {
+  type: string;
+  job_id?: string | null;
+  title?: string | null;
+  content_md?: string | null;
+  data: Record<string, unknown>;
+};
+
+export type PartialArtifact = Partial<
+  Pick<NewArtifact, "title" | "content_md" | "data">
+>;
+
+export type NewJob = {
+  id: string;
+  workflow_id: string;
+  input: Record<string, unknown>;
+};
+
+export type PrunePolicy = {
+  delivered_domain_events_days?: number;
+  jobs_days?: number;
+  artifacts_days?: number;
+  events_days?: number;
+  traces_days?: number;
+};
+
+export type EmbeddingData = {
+  id: string;
+  owner_type: "artifact" | "entity";
+  owner_id: string;
+  provider: string;
+  model: string;
+  dims: number;
+  vector: number[];
+  content_hash: string;
+  created_at: string;
+  updated_at: string;
+};
+
+// ==========================================================================
+// Core Runtime Interfaces (mirrored from atlas core)
+// ==========================================================================
+
+export interface CommandQueue {
+  enqueue(command: Command): void;
+}
+
+export interface ReadOnlyRepo {
+  getArtifact(id: string): Artifact | null;
+  getEntity(id: string): Entity | null;
+  getEmbeddingsByOwner(
+    ownerType: "artifact" | "entity",
+    ownerId: string,
+  ): EmbeddingData[];
+  listJobs(query?: {
+    status?: JobStatus;
+    limit?: number;
+  }): Job[];
+  listEntities(query: {
+    type?: string;
+    source?: string;
+    limit?: number;
+  }): Entity[];
+  findArtifacts(query: {
+    type?: string;
+    tags?: string[];
+    jobId?: string;
+    since?: string;
+    before?: string;
+    beforeId?: string;
+    limit?: number;
+  }): Artifact[];
+  listEmbeddings(query: {
+    owner_type?: "artifact" | "entity";
+    since?: string;
+    limit?: number;
+  }): EmbeddingData[];
+}
+
+export type LLMRuntime = {
+  generateText(args: {
+    system?: string;
+    prompt: string;
+    model?: string;
+    profile?: "fast" | "balanced" | "quality";
+    tags?: string[];
+    skills?: string[];
+    autoSkills?: boolean;
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<{
+    text: string;
+    provider: string;
+    model?: string;
+    usage?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+    };
+  }>;
+};
+
+export type EmbeddingRuntime = {
+  embedText(args: {
+    texts: string[];
+    profile?: "fast" | "balanced" | "quality";
+  }): Promise<{
+    vectors: number[][];
+    provider: string;
+    model?: string;
+    dims: number;
+  }>;
+};
+
+export type HarnessRuntime = {
+  runTask(args: {
+    harnessId?: string;
+    goal: string;
+    cwd: string;
+    contextPaths?: string[];
+    mode?: "plan" | "propose" | "apply";
+    profile?: "fast" | "balanced" | "quality";
+    tags?: string[];
+    budget?: {
+      maxMinutes?: number;
+    };
+  }): Promise<{
+    mode: "plan" | "propose" | "apply";
+    summary: string;
+    outputs: Array<
+      | { type: "text"; title?: string; content: string }
+      | { type: "diff"; title?: string; diff: string }
+      | { type: "file"; path: string; content: string }
+      | {
+          type: "command_log";
+          entries: Array<{
+            cmd: string;
+            exitCode?: number;
+            out?: string;
+            err?: string;
+          }>;
+        }
+    >;
+    provider?: string;
+    meta?: Record<string, unknown>;
+  }>;
+};
+
 // ============================================================================
 // Plugin Component Types
 // ============================================================================
 
 export type SourceContext = {
+  repo: ReadOnlyRepo;
+  commands: CommandQueue;
   nowIso(): string;
-  commands: {
-    enqueue(command: Command): void;
-  };
 };
 
 export type WorkflowContext = {
-  repo: {
-    getArtifact(id: string): Artifact | null;
-    getEntity(id: string): Entity | null;
-    getEmbeddingsByOwner(
-      ownerType: string,
-      ownerId: string,
-    ): Array<{ vector: number[] }>;
-    listJobs(query?: {
-      status?: string;
-      limit?: number;
-    }): Job[];
-  };
-  commands: {
-    enqueue(command: Command): void;
-  };
-  llm: {
-    generateText(args: {
-      prompt: string;
-      temperature?: number;
-      maxTokens?: number;
-      profile?: "fast" | "balanced" | "quality";
-    }): Promise<{
-      text: string;
-      provider: string;
-      usage?: {
-        promptTokens?: number;
-        completionTokens?: number;
-      };
-    }>;
-  };
-  embeddings?: {
-    generateEmbedding(text: string): Promise<number[]>;
-  };
-  harness?: {
-    execute(args: {
-      command: string;
-      args?: string[];
-      cwd?: string;
-    }): Promise<{
-      stdout: string;
-      stderr: string;
-      exitCode: number;
-    }>;
-  };
+  repo: ReadOnlyRepo;
+  commands: CommandQueue;
+  llm: LLMRuntime;
+  harness?: HarnessRuntime;
+  embeddings?: EmbeddingRuntime;
   nowIso(): string;
   emitArtifact(artifact: {
     type: string;
@@ -140,22 +273,28 @@ export type WorkflowContext = {
 };
 
 export type SinkContext = {
-  repo: {
-    getArtifact(id: string): Artifact | null;
-  };
-  commands: {
-    enqueue(command: Command): void;
-  };
+  repo: ReadOnlyRepo;
+  commands: CommandQueue;
+  nowIso(): string;
 };
 
 export type Command =
   | { type: "entity.upsert"; entity: Entity }
-  | { type: "entity.delete"; id: string }
-  | { type: "event.create"; event: Event }
-  | { type: "artifact.create"; artifact: Artifact }
-  | { type: "artifact.update"; id: string; patch: Partial<Artifact> }
-  | { type: "job.create"; job: Job }
-  | { type: "job.update"; id: string; status: JobStatus; log?: unknown };
+  | { type: "event.insert"; event: Event }
+  | { type: "artifact.create"; artifact: NewArtifact }
+  | { type: "artifact.update"; id: string; patch: PartialArtifact }
+  | { type: "job.create"; job: NewJob }
+  | { type: "job.updateStatus"; id: string; status: JobStatus }
+  | { type: "domainEvent.emit"; event: DomainEvent }
+  | { type: "domainEvent.markDelivered"; id: string }
+  | { type: "maintenance.prune"; policy: PrunePolicy }
+  | { type: "embedding.upsert"; data: EmbeddingData }
+  | {
+      type: "embedding.deleteByOwner";
+      owner_type: "artifact" | "entity";
+      owner_id: string;
+    }
+  | { type: "trace.emit"; event: TraceEvent };
 
 // ============================================================================
 // Plugin Interface Types
@@ -175,10 +314,19 @@ export type WorkflowPlugin = {
   ): Promise<void>;
 };
 
-export type SinkPlugin = {
+export interface SinkPlugin {
   id: string;
-  flush(ctx: SinkContext, artifacts: Artifact[]): Promise<void>;
-};
+  handle(
+    domainEvent: {
+      id: string;
+      type: string;
+      created_at: string;
+      aggregate_id?: string | null;
+      payload: Record<string, unknown>;
+    },
+    ctx: SinkContext,
+  ): Promise<void>;
+}
 
 // ============================================================================
 // External Plugin Types (for loading external plugins)
