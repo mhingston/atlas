@@ -1,0 +1,23 @@
+{
+  "name": "@atlas/filesystem-source",
+  "version": "1.0.0",
+  "description": "Atlas plugin to watch and ingest files from filesystem",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test",
+    "dev": "bun run --watch src/index.ts"
+  },
+  "keywords": ["atlas", "plugin", "filesystem", "source"],
+  "author": "Atlas Team",
+  "license": "MIT",
+  "dependencies": {
+    "@mhingston5/atlas-plugin-sdk": "file:../../plugin-sdk"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.7",
+    "typescript": "^5.9.3"
+  }
+}

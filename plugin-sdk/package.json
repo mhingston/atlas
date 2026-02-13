@@ -1,0 +1,39 @@
+{
+  "name": "@mhingston5/atlas-plugin-sdk",
+  "version": "1.0.0",
+  "description": "SDK for building Atlas plugins - types, contracts, and utilities",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist/", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test",
+    "lint": "biome lint .",
+    "format": "biome format .",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["atlas", "plugin", "sdk", "ai", "workflow"],
+  "author": "Atlas Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mhingston5/atlas.git"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

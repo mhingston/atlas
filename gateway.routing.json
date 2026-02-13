@@ -1,0 +1,69 @@
+{
+  "llm": {
+    "default_profile": "balanced",
+    "profiles": {
+      "fast": ["custom", "ollama", "openai-mini"],
+      "balanced": ["custom", "openai-mini", "anthropic-haiku"],
+      "quality": ["custom", "openai", "anthropic-sonnet"]
+    },
+    "fallback": ["mock"]
+  },
+  "embeddings": {
+    "default_profile": "balanced",
+    "profiles": {
+      "fast": ["openai-embedding-small"],
+      "balanced": ["openai-embedding-small", "ollama-embedding"],
+      "quality": ["openai-embedding-large", "ollama-embedding"]
+    },
+    "fallback": ["mock"]
+  },
+  "harness": {
+    "default_profile": "balanced",
+    "profiles": {
+      "fast": ["noop"],
+      "balanced": ["codex-cli", "noop"],
+      "quality": ["codex-cli", "noop"]
+    },
+    "fallback": ["noop"]
+  },
+  "harnesses": {
+    "codex-cli": {
+      "command": "copilot",
+      "args_template": ["--goal", "{goal}", "--cwd", "{cwd}"],
+      "output_parsers": {
+        "text": { "type": "stdout_all" }
+      },
+      "timeout_ms": 300000
+    },
+    "opencode": {
+      "command": "opencode",
+      "args_template": [
+        "execute",
+        "--task",
+        "{goal}",
+        "--directory",
+        "{cwd}",
+        "--format",
+        "json"
+      ],
+      "output_parsers": {
+        "diff": { "type": "json_field", "field": "changes" },
+        "plan": { "type": "json_field", "field": "plan" }
+      },
+      "timeout_ms": 180000
+    },
+    "aider": {
+      "command": "aider",
+      "args_template": ["--yes", "--message", "{goal}"],
+      "output_parsers": {
+        "diff": {
+          "type": "stdout_section",
+          "start_marker": "diff --git",
+          "end_marker": "\n\n"
+        },
+        "text": { "type": "stdout_all" }
+      },
+      "timeout_ms": 600000
+    }
+  }
+}

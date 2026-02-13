@@ -1,0 +1,52 @@
+{
+  "id": "atlas.filesystem-source",
+  "name": "Filesystem Source",
+  "version": "1.0.0",
+  "apiVersion": "1.0",
+  "description": "Watch directories and ingest markdown/text files into Atlas",
+  "author": "Atlas Team",
+  "license": "MIT",
+  "entry": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "config": {
+    "schema": {
+      "watchPaths": {
+        "type": "array",
+        "description": "Directories to watch for file changes",
+        "items": {
+          "type": "string"
+        },
+        "required": true
+      },
+      "includePatterns": {
+        "type": "array",
+        "description": "File patterns to include (glob)",
+        "items": {
+          "type": "string"
+        },
+        "default": ["**/*.md", "**/*.txt", "**/*.mdx"]
+      },
+      "excludePatterns": {
+        "type": "array",
+        "description": "File patterns to exclude",
+        "items": {
+          "type": "string"
+        },
+        "default": ["**/node_modules/**", "**/.git/**"]
+      },
+      "pollInterval": {
+        "type": "number",
+        "description": "How often to check for changes (seconds)",
+        "default": 60
+      },
+      "defaultTags": {
+        "type": "array",
+        "description": "Tags to add to all ingested files",
+        "items": {
+          "type": "string"
+        },
+        "default": ["filesystem"]
+      }
+    }
+  }
+}
