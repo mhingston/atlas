@@ -60,7 +60,7 @@ function getProviderConfig(): ProviderConfig | null {
   };
 
   if (provider in presets) {
-    return presets[provider];
+    return presets[provider] ?? null;
   }
 
   // Custom provider configuration

@@ -275,6 +275,90 @@ export function applyCommand(db: Database, cmd: Command) {
       insertTraceEvent(db, cmd.event);
       return;
     }
+    case "isc.report.create": {
+      const r = cmd.report;
+      db.prepare(`
+        INSERT INTO isc_reports (id, artifact_id, artifact_type, passed, criteria_results, anti_criteria_results, summary, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        r.id,
+        r.artifactId,
+        r.artifactType,
+        r.passed ? 1 : 0,
+        JSON.stringify(r.criteriaResults),
+        JSON.stringify(r.antiCriteriaResults),
+        r.summary,
+        r.createdAt,
+      );
+      emit(db, "isc.report.created", r.artifactId, {
+        report_id: r.id,
+        artifact_id: r.artifactId,
+        passed: r.passed,
+      });
+      return;
+    }
+    case "reflection.create": {
+      const ref = cmd.reflection;
+      db.prepare(`
+        INSERT INTO reflections (
+          id, job_id, workflow_id, timestamp, effort_level, artifact_type,
+          criteria_count, criteria_passed, criteria_failed, within_budget,
+          elapsed_percent, implied_sentiment, q1_self, q2_workflow, q3_system,
+          version, isc_report_id, metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        ref.id,
+        ref.jobId,
+        ref.workflowId,
+        ref.timestamp,
+        ref.effortLevel,
+        ref.artifactType,
+        ref.criteriaCount,
+        ref.criteriaPassed,
+        ref.criteriaFailed,
+        ref.withinBudget ? 1 : 0,
+        ref.elapsedPercent,
+        ref.impliedSentiment ?? null,
+        ref.q1Self,
+        ref.q2Workflow,
+        ref.q3System,
+        ref.version,
+        ref.iscReportId ?? null,
+        JSON.stringify({}),
+      );
+      emit(db, "reflection.created", ref.jobId, {
+        reflection_id: ref.id,
+        job_id: ref.jobId,
+        workflow_id: ref.workflowId,
+      });
+      return;
+    }
+    case "prd.create": {
+      // PRDs are stored as markdown files, not in database
+      // This command is handled by PRDStorage
+      emit(db, "prd.created", cmd.prd.artifactId, {
+        prd_id: cmd.prd.id,
+        artifact_id: cmd.prd.artifactId,
+        status: cmd.prd.status,
+      });
+      return;
+    }
+    case "prd.update": {
+      // PRDs are stored as markdown files
+      emit(db, "prd.updated", cmd.id, {
+        prd_id: cmd.id,
+        patch: Object.keys(cmd.patch),
+      });
+      return;
+    }
+    case "prd.addLogEntry": {
+      // PRDs are stored as markdown files
+      emit(db, "prd.log_entry_added", cmd.id, {
+        prd_id: cmd.id,
+        iteration: cmd.entry.iteration,
+      });
+      return;
+    }
     default:
       return;
   }

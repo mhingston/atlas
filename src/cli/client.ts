@@ -43,14 +43,18 @@ export interface SkillDetail extends SkillSummary {
 }
 
 export class AtlasClient {
-  private baseUrl: string;
+  private _baseUrl: string;
 
   constructor(config: AtlasClientConfig) {
-    this.baseUrl = config.baseUrl.replace(/\/$/, "");
+    this._baseUrl = config.baseUrl.replace(/\/$/, "");
+  }
+
+  get baseUrl(): string {
+    return this._baseUrl;
   }
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = `${this._baseUrl}${path}`;
     const response = await fetch(url, {
       ...options,
       headers: {

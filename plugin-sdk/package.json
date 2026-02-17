@@ -1,6 +1,6 @@
 {
   "name": "@mhingston5/atlas-plugin-sdk",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "SDK for building Atlas plugins - types, contracts, and utilities",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,13 +1,29 @@
+import { ulid } from "ulid";
+import type { SkillAwareLLMRuntime } from "../ai/skill_aware_llm_runtime";
 import { TracedEmbeddingRuntime } from "../ai/traced_embedding_runtime";
 import { TracedLLMRuntime } from "../ai/traced_llm_runtime";
+import { BudgetTracker } from "../core/budget-tracker";
 import type { Command } from "../core/commands";
+import { db } from "../core/db";
 import { logError, logInfo } from "../core/logger";
+import { PRDStorage } from "../core/prd-storage";
 import { CommandQueue } from "../core/queue";
+import { ReflectionCapture } from "../core/reflection-capture";
 import type { ReadOnlyRepo } from "../core/repo";
 import { createTraceEmitter } from "../core/trace";
-import type { JobStatus } from "../core/types";
+import type { Artifact, JobStatus } from "../core/types";
 import { TracedHarnessRuntime } from "../harness/traced_harness_runtime";
+import { registerDefaultISCDefinitions } from "../isc/definitions";
+import { globalISCRegistry } from "../isc/registry";
+import type { ISCDefinition, ISCReport } from "../isc/types";
 import type { PluginRegistry } from "../plugins/registry";
+import { profileToEffortLevel } from "../types/effort";
+import type { EffortLevel } from "../types/effort";
+import type { PRD } from "../types/prd";
+import { VerificationEngine } from "../verification/engine";
+
+// Initialize ISC registry with default definitions
+registerDefaultISCDefinitions();
 
 /**
  * Local command buffer for job execution
@@ -63,6 +79,52 @@ class LocalCommandBuffer extends CommandQueue {
     const status = this.findJobStatusUpdate(jobId);
     return status === "succeeded" || status === "failed";
   }
+}
+
+/**
+ * Enhanced Workflow Context with ISC support
+ */
+interface EnhancedWorkflowContext {
+  repo: ReadOnlyRepo;
+  commands: LocalCommandBuffer;
+  llm: TracedLLMRuntime | SkillAwareLLMRuntime;
+  harness?: TracedHarnessRuntime;
+  embeddings?: TracedEmbeddingRuntime;
+  nowIso(): string;
+  emitArtifact(artifact: {
+    type: string;
+    job_id?: string | null;
+    title?: string | null;
+    content_md?: string | null;
+    data: Record<string, unknown>;
+  }): Promise<void>;
+  spawnJob(
+    workflowId: string,
+    input: Record<string, unknown>,
+  ): { jobId: string };
+  findArtifacts(query: {
+    type?: string;
+    tags?: string[];
+    jobId?: string;
+    since?: string;
+    limit?: number;
+  }): Artifact[];
+  // ISC Integration
+  getISC(artifactType: string): ISCDefinition | undefined;
+  verifyCriterion(
+    criterion: import("../isc/types").IdealStateCriterion,
+    artifact: Artifact,
+  ): Promise<import("../isc/types").VerificationResult>;
+  verifyAllCriteria(
+    artifactType: string,
+    artifact: Artifact,
+  ): Promise<ISCReport>;
+  // Effort Level
+  getEffortLevel(): EffortLevel;
+  // Reflection
+  captureReflection(jobId: string, effortLevel: EffortLevel): Promise<void>;
+  // PRD
+  createPRD(artifact: Artifact, isc: ISCDefinition): Promise<PRD>;
 }
 
 /**
@@ -143,10 +205,17 @@ export async function runOnce(
         resolveSkillContextLimit,
         resolveSkillPaths,
       } = await import("../skills");
-      const { ulid } = await import("ulid");
 
       // Load routing configuration
       const routingConfig = await loadOrDefaultRoutingConfig();
+
+      // Determine effort level from job input or routing profile
+      const jobEffortLevel = (job.input?.effort_level as EffortLevel) || null;
+      const defaultProfile =
+        Object.keys(routingConfig.llm?.profiles || {})[0] || "balanced";
+      const effortLevel: EffortLevel =
+        jobEffortLevel ||
+        profileToEffortLevel((job.input?.profile as string) || defaultProfile);
 
       // Create policy first (needed for harness registry)
       const policy = createWorkflowPolicy(workflow.capabilities);
@@ -203,8 +272,26 @@ export async function runOnce(
         trace,
       );
       const tracedHarness = new TracedHarnessRuntime(gatedHarness, trace);
-      const requireApprovalByDefault =
-        process.env.ATLAS_REQUIRE_APPROVAL_BY_DEFAULT === "true";
+
+      // Initialize Budget Tracker
+      const budgetTracker = new BudgetTracker(job.id, effortLevel);
+
+      // Initialize Verification Engine
+      const verificationEngine = new VerificationEngine(
+        skillAwareLLM,
+        repo,
+        db,
+      );
+
+      // Initialize Reflection Capture
+      const reflectionCapture = new ReflectionCapture(
+        localCommands,
+        repo,
+        skillAwareLLM,
+      );
+
+      // Initialize PRD Storage
+      const prdStorage = new PRDStorage();
 
       // Helper to flush local commands to global queue
       const flushLocalCommands = () => {
@@ -242,7 +329,180 @@ export async function runOnce(
         });
       };
 
-      const ctx = {
+      // ISC-aware emitArtifact function
+      const emitArtifact = async (a: {
+        type: string;
+        job_id?: string | null;
+        title?: string | null;
+        content_md?: string | null;
+        data: Record<string, unknown>;
+      }): Promise<void> => {
+        // Create artifact object for verification
+        const artifactForVerification: Artifact = {
+          id: `art_${ulid()}`,
+          type: a.type,
+          job_id: a.job_id ?? null,
+          title: a.title ?? null,
+          content_md: a.content_md ?? null,
+          data: { ...a.data },
+          created_at: new Date().toISOString(),
+        };
+
+        // Get ISC for this artifact type
+        const isc = globalISCRegistry.getCriteria(a.type);
+
+        let iscReport: ISCReport | undefined;
+
+        if (isc) {
+          // Verify against ISC before emission
+          trace.event(
+            "isc.verification.start",
+            { artifact_type: a.type, criteria_count: isc.idealCriteria.length },
+            "ISC verification starting",
+            "start",
+          );
+
+          iscReport = await verificationEngine.verifyAllCriteria(
+            isc,
+            artifactForVerification,
+            job.id,
+            workflow.id,
+          );
+
+          // Attach ISC report to artifact data
+          artifactForVerification.data.isc_report = {
+            passed: iscReport.passed,
+            criteria_count: iscReport.criteriaResults.length,
+            passed_count: iscReport.criteriaResults.filter((r) => r.passed)
+              .length,
+            report_id: iscReport.id,
+          };
+
+          trace.event(
+            "isc.verification.end",
+            {
+              passed: iscReport.passed,
+              criteria_passed: iscReport.criteriaResults.filter((r) => r.passed)
+                .length,
+            },
+            iscReport.passed
+              ? "ISC verification passed"
+              : "ISC verification failed",
+            iscReport.passed ? "ok" : "failed",
+          );
+
+          // Fail-closed: Don't emit if CRITICAL criteria fail
+          const criticalFailures = iscReport.criteriaResults.filter((r) => {
+            if (!r.passed) {
+              const criterion = isc.idealCriteria.find(
+                (c) => c.id === r.criterionId,
+              );
+              return criterion?.priority === "CRITICAL";
+            }
+            return false;
+          });
+
+          if (criticalFailures.length > 0) {
+            const failureIds = criticalFailures.map((f) => f.criterionId);
+            throw new Error(
+              `Artifact failed ${criticalFailures.length} CRITICAL ISC criteria: ${failureIds.join(", ")}`,
+            );
+          }
+        }
+
+        // Emit artifact
+        localCommands.enqueue({
+          type: "artifact.create",
+          artifact: a,
+        });
+
+        // Create PRD for the artifact
+        if (isc && iscReport) {
+          const prd: PRD = {
+            id: PRDStorage.generateId(a.type.replace(/\./g, "-")),
+            artifactId: artifactForVerification.id,
+            workflowId: workflow.id,
+            jobId: job.id,
+            status: iscReport.passed ? "COMPLETE" : "FAILED",
+            effortLevel,
+            title: a.title || `Artifact: ${a.type}`,
+            problemSpace: `Generated by ${workflow.id}`,
+            keyFiles: [],
+            constraints: [],
+            decisions: [],
+            idealCriteria: isc.idealCriteria,
+            antiCriteria: isc.antiCriteria,
+            iteration: 1,
+            maxIterations: 10,
+            lastPhase: "VERIFY",
+            failingCriteria: iscReport.criteriaResults
+              .filter((r) => !r.passed)
+              .map((r) => r.criterionId),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            log: [
+              {
+                iteration: 1,
+                date: new Date().toISOString(),
+                phase: iscReport.passed ? "COMPLETE" : "FAILED",
+                criteriaProgress: `${iscReport.criteriaResults.filter((r) => r.passed).length}/${iscReport.criteriaResults.length}`,
+                workDone: "Artifact generated with ISC verification",
+                failing: iscReport.criteriaResults
+                  .filter((r) => !r.passed)
+                  .map((r) => r.criterionId),
+                context: `Effort level: ${effortLevel}`,
+              },
+            ],
+          };
+
+          prdStorage.create(prd);
+
+          localCommands.enqueue({
+            type: "prd.create",
+            prd,
+          });
+        }
+      };
+
+      // Create PRD helper
+      const createPRD = async (
+        artifact: Artifact,
+        isc: ISCDefinition,
+      ): Promise<PRD> => {
+        const prd: PRD = {
+          id: PRDStorage.generateId(artifact.type.replace(/\./g, "-")),
+          artifactId: artifact.id,
+          workflowId: workflow.id,
+          jobId: job.id,
+          status: "COMPLETE",
+          effortLevel,
+          title: artifact.title || `Artifact: ${artifact.type}`,
+          problemSpace: `Generated by ${workflow.id}`,
+          keyFiles: [],
+          constraints: [],
+          decisions: [],
+          idealCriteria: isc.idealCriteria,
+          antiCriteria: isc.antiCriteria,
+          iteration: 1,
+          maxIterations: 10,
+          lastPhase: "COMPLETE",
+          failingCriteria: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          log: [],
+        };
+
+        prdStorage.create(prd);
+
+        localCommands.enqueue({
+          type: "prd.create",
+          prd,
+        });
+
+        return prd;
+      };
+
+      const ctx: EnhancedWorkflowContext = {
         repo,
         commands: localCommands,
         llm: skillAwareLLM,
@@ -250,18 +510,7 @@ export async function runOnce(
         embeddings: tracedEmbeddings,
         nowIso: () => new Date().toISOString(),
 
-        emitArtifact(a: {
-          type: string;
-          job_id?: string | null;
-          title?: string | null;
-          content_md?: string | null;
-          data: Record<string, unknown>;
-        }) {
-          localCommands.enqueue({
-            type: "artifact.create",
-            artifact: a,
-          });
-        },
+        emitArtifact,
 
         spawnJob(workflowId: string, input: Record<string, unknown>) {
           const jobId = `job_${ulid()}`;
@@ -286,6 +535,60 @@ export async function runOnce(
             limit: query.limit,
           });
         },
+
+        // ISC Integration
+        getISC(artifactType: string): ISCDefinition | undefined {
+          // First check workflow's own ISC definition
+          const workflowWithISC = workflow as { isc?: ISCDefinition };
+          if (workflowWithISC.isc) {
+            return workflowWithISC.isc;
+          }
+          // Then check global registry
+          return globalISCRegistry.getCriteria(artifactType);
+        },
+
+        async verifyCriterion(criterion, artifact) {
+          return verificationEngine.verifyCriterion(criterion, artifact, {
+            jobId: job.id,
+            workflowId: workflow.id,
+          });
+        },
+
+        async verifyAllCriteria(artifactType, artifact) {
+          const isc = globalISCRegistry.getCriteria(artifactType);
+          if (!isc) {
+            throw new Error(`No ISC definition found for ${artifactType}`);
+          }
+          return verificationEngine.verifyAllCriteria(
+            isc,
+            artifact,
+            job.id,
+            workflow.id,
+          );
+        },
+
+        // Effort Level
+        getEffortLevel(): EffortLevel {
+          return effortLevel;
+        },
+
+        // Reflection
+        async captureReflection(
+          jobId: string,
+          effortLevel: EffortLevel,
+        ): Promise<void> {
+          // Only capture for STANDARD+ effort levels
+          if (effortLevel === "INSTANT" || effortLevel === "FAST") {
+            return;
+          }
+
+          // Get the most recent ISC report for this job
+          const iscReport = undefined; // Would query from repo
+
+          await reflectionCapture.capture(jobId, effortLevel, iscReport);
+        },
+
+        createPRD,
       };
 
       // Execute workflow
@@ -293,12 +596,32 @@ export async function runOnce(
         "workflow.start",
         {
           input_keys: Object.keys(job.input ?? {}),
+          effort_level: effortLevel,
         },
         "Workflow start",
         "start",
       );
+
+      // Log budget status at start
+      budgetTracker.logStatus();
+
       await workflow.run(ctx, job.input, job.id);
       trace.event("workflow.end", { status: "ok" }, "Workflow end", "ok");
+
+      // Capture reflection for STANDARD+ effort levels
+      if (effortLevel !== "INSTANT" && effortLevel !== "FAST") {
+        try {
+          await ctx.captureReflection(job.id, effortLevel);
+        } catch (error) {
+          logError("runner.reflection_failed", {
+            job_id: job.id,
+            error,
+          });
+        }
+      }
+
+      // Log final budget status
+      budgetTracker.logStatus();
 
       // Check if workflow already enqueued a status update (e.g., needs_approval)
       const workflowStatus = localCommands.findJobStatusUpdate(job.id);
@@ -400,6 +723,10 @@ export async function runOnce(
             });
           }
         } else {
+          // No verifier hook, check approval policy
+          const requireApprovalByDefault =
+            process.env.ATLAS_REQUIRE_APPROVAL_BY_DEFAULT === "true";
+
           if (requireApprovalByDefault) {
             localCommands.enqueue({
               type: "job.updateStatus",

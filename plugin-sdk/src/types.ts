@@ -11,6 +11,169 @@
 
 export type IsoDate = string;
 
+// ============================================================================
+// ISC (Ideal State Criteria) Types
+// ============================================================================
+
+export type ISCPriority = "CRITICAL" | "IMPORTANT" | "NICE";
+export type ISCConfidence = "EXPLICIT" | "INFERRED" | "REVERSE_ENGINEERED";
+export type ISCDomain =
+  | "accuracy"
+  | "completeness"
+  | "format"
+  | "style"
+  | "performance"
+  | "security"
+  | "general";
+export type ISCScaleTier = "SIMPLE" | "MEDIUM" | "LARGE" | "MASSIVE";
+
+export interface IdealStateCriterion {
+  id: string;
+  criterion: string;
+  priority: ISCPriority;
+  confidence: ISCConfidence;
+  verify: VerificationMethod;
+  domain?: ISCDomain;
+}
+
+export interface AntiCriterion {
+  id: string;
+  criterion: string;
+  priority: ISCPriority;
+  verify: VerificationMethod;
+}
+
+export type VerificationMethod =
+  | { type: "CLI"; command: string }
+  | { type: "TEST"; testId: string }
+  | { type: "STATIC"; check: string }
+  | { type: "BROWSER"; scenario: string }
+  | { type: "GREP"; pattern: string }
+  | { type: "READ"; path: string }
+  | { type: "CUSTOM"; description: string; scriptPath?: string };
+
+export interface ISCDefinition {
+  artifactType: string;
+  version: string;
+  idealCriteria: IdealStateCriterion[];
+  antiCriteria: AntiCriterion[];
+  minCriteria: number;
+  scaleTier: ISCScaleTier;
+}
+
+export interface VerificationResult {
+  criterionId: string;
+  passed: boolean;
+  evidence: string;
+  actualValue?: string;
+  thresholdValue?: string;
+  durationMs: number;
+}
+
+export interface ISCReport {
+  id: string;
+  artifactId: string;
+  artifactType: string;
+  passed: boolean;
+  criteriaResults: VerificationResult[];
+  antiCriteriaResults: VerificationResult[];
+  summary: string;
+  timestamp: string;
+  createdAt: string;
+}
+
+// ============================================================================
+// Effort Level Types
+// ============================================================================
+
+export type EffortLevel =
+  | "INSTANT"
+  | "FAST"
+  | "STANDARD"
+  | "EXTENDED"
+  | "ADVANCED"
+  | "DEEP"
+  | "COMPREHENSIVE";
+
+// ============================================================================
+// Reflection Types
+// ============================================================================
+
+export interface AlgorithmReflection {
+  id: string;
+  jobId: string;
+  workflowId: string;
+  timestamp: string;
+  effortLevel: EffortLevel;
+  artifactType: string;
+  criteriaCount: number;
+  criteriaPassed: number;
+  criteriaFailed: number;
+  withinBudget: boolean;
+  elapsedPercent: number;
+  impliedSentiment?: number;
+  userFeedback?: string;
+  q1Self: string;
+  q2Workflow: string;
+  q3System: string;
+  iscReportId?: string;
+  version: string;
+}
+
+// ============================================================================
+// PRD Types
+// ============================================================================
+
+export type PRDStatus =
+  | "DRAFT"
+  | "CRITERIA_DEFINED"
+  | "PLANNED"
+  | "IN_PROGRESS"
+  | "VERIFYING"
+  | "COMPLETE"
+  | "FAILED"
+  | "BLOCKED";
+
+export interface PRDDecision {
+  date: string;
+  decision: string;
+  rationale: string;
+  alternatives: string[];
+}
+
+export interface PRDLogEntry {
+  iteration: number;
+  date: string;
+  phase: string;
+  criteriaProgress: string;
+  workDone: string;
+  failing: string[];
+  context: string;
+}
+
+export interface PRD {
+  id: string;
+  artifactId: string;
+  workflowId: string;
+  jobId: string;
+  status: PRDStatus;
+  effortLevel: EffortLevel;
+  title: string;
+  problemSpace: string;
+  keyFiles: string[];
+  constraints: string[];
+  decisions: PRDDecision[];
+  idealCriteria: IdealStateCriterion[];
+  antiCriteria: AntiCriterion[];
+  iteration: number;
+  maxIterations: number;
+  lastPhase: string;
+  failingCriteria: string[];
+  createdAt: string;
+  updatedAt: string;
+  log: PRDLogEntry[];
+}
+
 export type Entity = {
   id: string;
   type: string;
@@ -256,7 +419,7 @@ export type WorkflowContext = {
     title?: string | null;
     content_md?: string | null;
     data: Record<string, unknown>;
-  }): void;
+  }): Promise<void>;
   spawnJob(
     workflowId: string,
     input: Record<string, unknown>,
@@ -270,6 +433,20 @@ export type WorkflowContext = {
     beforeId?: string;
     limit?: number;
   }): Artifact[];
+  // ISC Integration
+  getISC?(artifactType: string): ISCDefinition | undefined;
+  verifyCriterion?(
+    criterion: IdealStateCriterion,
+    artifact: Artifact,
+  ): Promise<VerificationResult>;
+  verifyAllCriteria?(
+    artifactType: string,
+    artifact: Artifact,
+  ): Promise<ISCReport>;
+  // Effort Level
+  getEffortLevel?(): EffortLevel;
+  // Reflection
+  captureReflection?(jobId: string, effortLevel: EffortLevel): Promise<void>;
 };
 
 export type SinkContext = {
@@ -294,7 +471,12 @@ export type Command =
       owner_type: "artifact" | "entity";
       owner_id: string;
     }
-  | { type: "trace.emit"; event: TraceEvent };
+  | { type: "trace.emit"; event: TraceEvent }
+  | { type: "isc.report.create"; report: ISCReport }
+  | { type: "reflection.create"; reflection: AlgorithmReflection }
+  | { type: "prd.create"; prd: PRD }
+  | { type: "prd.update"; id: string; patch: Partial<PRD> }
+  | { type: "prd.addLogEntry"; id: string; entry: PRDLogEntry };
 
 // ============================================================================
 // Plugin Interface Types
@@ -307,7 +489,13 @@ export type SourcePlugin = {
 
 export type WorkflowPlugin = {
   id: string;
+  isc?: ISCDefinition;
   run(
+    ctx: WorkflowContext,
+    input: Record<string, unknown>,
+    jobId: string,
+  ): Promise<void>;
+  verify?(
     ctx: WorkflowContext,
     input: Record<string, unknown>,
     jobId: string,

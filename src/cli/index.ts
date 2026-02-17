@@ -4,6 +4,7 @@
  *
  * Usage:
  *   atlas status                    # Check gateway status
+ *   atlas chat <message>            # Chat with Atlas via OpenAI API
  *   atlas jobs list                 # List recent jobs
  *   atlas jobs show <id>            # Show job details
  *   atlas jobs create <workflow>    # Create a new job
@@ -24,6 +25,7 @@ import {
   batchApprove,
   batchDeny,
   batchRetry,
+  chatCommand,
   createJob,
   denyJob,
   listArtifacts,
@@ -49,6 +51,11 @@ Usage: atlas <command> [options]
 
 Commands:
   status                           Check gateway health and recent jobs
+  
+  chat <message> [options]         Chat with Atlas via OpenAI API
+            --model=<model>        Model to use (atlas-scratchpad, atlas-brainstorm, atlas-code)
+            --conversation=<id>    Continue existing conversation
+            --stream               Enable streaming response
   
   jobs list [options]              List jobs
             --status=<status>      Filter by status
@@ -177,6 +184,20 @@ async function main(): Promise<void> {
       case "status":
         await status(client);
         break;
+
+      case "chat": {
+        if (!positional[0]) {
+          console.error("Error: Message required");
+          process.exit(1);
+        }
+        const message = positional.join(" ");
+        await chatCommand(client, message, {
+          model: (flags.model as string) || "atlas-scratchpad",
+          conversation: flags.conversation as string | undefined,
+          stream: flags.stream === true,
+        });
+        break;
+      }
 
       case "jobs":
         switch (subcmd) {

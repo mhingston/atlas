@@ -6,6 +6,14 @@ import type { Artifact, Entity, JobStatus } from "../core/types";
 import type { FlushLoop } from "../jobs/loop";
 import type { PluginRegistry } from "../plugins/registry";
 import { loadSkillRegistry, resolveSkillPaths } from "../skills";
+import {
+  type ChatCompletionRequest,
+  createChatCompletion,
+  createChatCompletionStream,
+  createStreamResponse,
+  getModels,
+  parseJsonBody,
+} from "./openai_adapter";
 
 /**
  * HTTP API routes for Atlas Gateway
@@ -28,7 +36,7 @@ export function createFetchHandler(
   registry: PluginRegistry,
   repo: ReadOnlyRepo,
   commands: CommandQueue,
-  _flushLoop: FlushLoop,
+  flushLoop: FlushLoop,
 ) {
   let skillRegistryCache: Awaited<ReturnType<typeof loadSkillRegistry>> | null =
     null;
@@ -49,6 +57,71 @@ export function createFetchHandler(
     // GET /health
     if (path === "/health" && method === "GET") {
       return jsonResponse({ status: "ok" });
+    }
+
+    // GET /v1/models (OpenAI-compatible)
+    if (path === "/v1/models" && method === "GET") {
+      // Check if OpenAI API is enabled
+      if (process.env.ATLAS_OPENAI_API_ENABLED !== "true") {
+        return jsonResponse(
+          { error: "OpenAI-compatible API is disabled" },
+          403,
+        );
+      }
+      return jsonResponse(getModels());
+    }
+
+    // POST /v1/chat/completions (OpenAI-compatible)
+    if (path === "/v1/chat/completions" && method === "POST") {
+      // Check if OpenAI API is enabled
+      if (process.env.ATLAS_OPENAI_API_ENABLED !== "true") {
+        return jsonResponse(
+          { error: "OpenAI-compatible API is disabled" },
+          403,
+        );
+      }
+      const body = await parseJsonBody(req);
+      if (!body) {
+        return jsonResponse({ error: "Invalid JSON body" }, 400);
+      }
+
+      const requestBody = body as unknown as ChatCompletionRequest;
+
+      if (!requestBody.model) {
+        return jsonResponse({ error: "model is required" }, 400);
+      }
+
+      if (
+        !Array.isArray(requestBody.messages) ||
+        requestBody.messages.length === 0
+      ) {
+        return jsonResponse({ error: "messages array is required" }, 400);
+      }
+
+      try {
+        if (requestBody.stream) {
+          // Streaming response
+          const generator = createChatCompletionStream(
+            requestBody,
+            commands,
+            repo,
+          );
+          return createStreamResponse(generator);
+        }
+        // Non-streaming response
+        const response = await createChatCompletion(
+          requestBody,
+          commands,
+          repo,
+          () => flushLoop.flushOnce(),
+        );
+        return jsonResponse(response);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logError("api.chat_completions_error", { error });
+        return jsonResponse({ error: errorMessage }, 500);
+      }
     }
 
     // GET /ops
@@ -868,6 +941,160 @@ export function createFetchHandler(
         logError("api.search_error", { error });
         return jsonResponse({ error: "Search failed" }, 500);
       }
+    }
+
+    // GET /api/v1/artifacts/:id/isc-report
+    if (
+      path.match(/^\/api\/v1\/artifacts\/[^/]+\/isc-report$/) &&
+      method === "GET"
+    ) {
+      const id = path.split("/")[4];
+      if (!id) {
+        return jsonResponse({ error: "Invalid artifact ID" }, 400);
+      }
+
+      const artifact = repo.getArtifact(id);
+      if (!artifact) {
+        return jsonResponse({ error: "Artifact not found" }, 404);
+      }
+
+      // Query ISC report from database
+      try {
+        const { db } = await import("../core/db");
+        interface ISCReportRow {
+          criteria_results: string;
+          anti_criteria_results: string;
+          passed: number;
+          [key: string]: unknown;
+        }
+        const report = db
+          .prepare(
+            "SELECT * FROM isc_reports WHERE artifact_id = ? ORDER BY created_at DESC LIMIT 1",
+          )
+          .get(id) as ISCReportRow | null;
+
+        if (!report) {
+          return jsonResponse(
+            { error: "ISC report not found for artifact" },
+            404,
+          );
+        }
+
+        return jsonResponse({
+          artifact_id: id,
+          report: {
+            ...report,
+            criteria_results: JSON.parse(report.criteria_results),
+            anti_criteria_results: JSON.parse(report.anti_criteria_results),
+            passed: Boolean(report.passed),
+          },
+        });
+      } catch (error) {
+        logError("api.isc_report_error", { error });
+        return jsonResponse({ error: "Failed to retrieve ISC report" }, 500);
+      }
+    }
+
+    // GET /api/v1/artifacts/:id/prd
+    if (path.match(/^\/api\/v1\/artifacts\/[^/]+\/prd$/) && method === "GET") {
+      const id = path.split("/")[4];
+      if (!id) {
+        return jsonResponse({ error: "Invalid artifact ID" }, 400);
+      }
+
+      const artifact = repo.getArtifact(id);
+      if (!artifact) {
+        return jsonResponse({ error: "Artifact not found" }, 404);
+      }
+
+      // Read PRD from file system
+      try {
+        const { PRDStorage } = await import("../core/prd-storage");
+        const prdStorage = new PRDStorage();
+        const prd = prdStorage.read(id);
+
+        if (!prd) {
+          return jsonResponse({ error: "PRD not found for artifact" }, 404);
+        }
+
+        return jsonResponse({ prd });
+      } catch (error) {
+        logError("api.prd_error", { error });
+        return jsonResponse({ error: "Failed to retrieve PRD" }, 500);
+      }
+    }
+
+    // GET /api/v1/reflections
+    if (path === "/api/v1/reflections" && method === "GET") {
+      const workflowId = url.searchParams.get("workflow_id") ?? undefined;
+      const since = url.searchParams.get("since") ?? undefined;
+      const limitParam = Number.parseInt(
+        url.searchParams.get("limit") ?? "50",
+        10,
+      );
+      const limit =
+        Number.isFinite(limitParam) && limitParam > 0
+          ? Math.min(200, limitParam)
+          : 50;
+
+      try {
+        const { db } = await import("../core/db");
+        let query = "SELECT * FROM reflections WHERE 1=1";
+        const params: (string | number)[] = [];
+
+        if (workflowId) {
+          query += " AND workflow_id = ?";
+          params.push(workflowId);
+        }
+
+        if (since) {
+          query += " AND timestamp > ?";
+          params.push(since);
+        }
+
+        query += " ORDER BY timestamp DESC LIMIT ?";
+        params.push(limit);
+
+        const reflections = db.prepare(query).all(...params) as Record<
+          string,
+          unknown
+        >[];
+
+        return jsonResponse({
+          reflections: reflections.map((r) => ({
+            ...r,
+            within_budget: Boolean(r.within_budget),
+          })),
+          count: reflections.length,
+        });
+      } catch (error) {
+        logError("api.reflections_error", { error });
+        return jsonResponse({ error: "Failed to retrieve reflections" }, 500);
+      }
+    }
+
+    // GET /api/v1/workflows/:id/isc
+    if (path.match(/^\/api\/v1\/workflows\/[^/]+\/isc$/) && method === "GET") {
+      const workflowId = path.split("/")[4];
+      if (!workflowId) {
+        return jsonResponse({ error: "Invalid workflow ID" }, 400);
+      }
+
+      const workflow = registry.getWorkflow(workflowId);
+      if (!workflow) {
+        return jsonResponse({ error: "Workflow not found" }, 404);
+      }
+
+      // Return workflow's ISC definition if available
+      const workflowWithISC = workflow as {
+        isc?: import("../isc/types").ISCDefinition;
+      };
+      if (workflowWithISC.isc) {
+        return jsonResponse({ isc: workflowWithISC.isc });
+      }
+
+      // Otherwise return empty
+      return jsonResponse({ isc: null });
     }
 
     return jsonResponse({ error: "Not found" }, 404);

@@ -478,3 +478,106 @@ export async function batchDeleteArtifacts(
   console.log("Batch artifact deletion not yet implemented in API.");
   console.log("Use individual artifact operations for now.");
 }
+
+interface ChatOptions {
+  model: string;
+  conversation?: string;
+  stream?: boolean;
+}
+
+export async function chatCommand(
+  client: AtlasClient,
+  message: string,
+  options: ChatOptions,
+): Promise<void> {
+  try {
+    const response = await fetch(`${client.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: options.model,
+        messages: [{ role: "user", content: message }],
+        conversation_id: options.conversation,
+        stream: options.stream,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Chat failed: ${response.status} - ${error}`);
+    }
+
+    if (options.stream) {
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body for streaming");
+      }
+
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              console.log("\n");
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                process.stdout.write(content);
+              }
+            } catch {
+              // Ignore parse errors for incomplete chunks
+            }
+          }
+        }
+      }
+    } else {
+      // Handle non-streaming response
+      interface ChatCompletionResponse {
+        choices?: Array<{
+          message?: { content?: string };
+          finish_reason?: string;
+        }>;
+        usage?: {
+          total_tokens: number;
+          prompt_tokens: number;
+          completion_tokens: number;
+        };
+      }
+      const data = (await response.json()) as ChatCompletionResponse;
+      const content = data.choices?.[0]?.message?.content;
+
+      if (content) {
+        console.log(content);
+      }
+
+      if (data.usage) {
+        console.log(
+          `\n---\nTokens: ${data.usage.total_tokens} (${data.usage.prompt_tokens} + ${data.usage.completion_tokens})`,
+        );
+      }
+
+      if (
+        data.choices?.[0]?.finish_reason &&
+        data.choices[0].finish_reason !== "stop"
+      ) {
+        console.log(`\nFinish reason: ${data.choices[0].finish_reason}`);
+      }
+    }
+  } catch (error) {
+    console.error(
+      `Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}

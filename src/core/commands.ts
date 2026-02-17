@@ -1,3 +1,6 @@
+import type { ISCReport } from "../isc/types";
+import type { PRD, PRDLogEntry } from "../types/prd";
+import type { AlgorithmReflection } from "../types/reflection";
 import type {
   DomainEvent,
   Entity,
@@ -61,4 +64,9 @@ export type Command =
       owner_type: "artifact" | "entity";
       owner_id: string;
     }
-  | { type: "trace.emit"; event: TraceEvent };
+  | { type: "trace.emit"; event: TraceEvent }
+  | { type: "isc.report.create"; report: ISCReport }
+  | { type: "reflection.create"; reflection: AlgorithmReflection }
+  | { type: "prd.create"; prd: PRD }
+  | { type: "prd.update"; id: string; patch: Partial<PRD> }
+  | { type: "prd.addLogEntry"; id: string; entry: PRDLogEntry };

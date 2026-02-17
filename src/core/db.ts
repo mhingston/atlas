@@ -1,10 +1,13 @@
 import { Database } from "bun:sqlite";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { logInfo } from "./logger";
 
 const DB_PATH =
   process.env.ATLAS_DB_PATH || join(import.meta.dir, "../../data/atlas.db");
+
+// Ensure the data directory exists before creating the database
+mkdirSync(dirname(DB_PATH), { recursive: true });
 
 export const db = new Database(DB_PATH, { create: true });
 

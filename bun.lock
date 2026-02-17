@@ -5,7 +5,7 @@
     "": {
       "name": "@mhingston5/atlas",
       "dependencies": {
-        "@mhingston5/atlas-plugin-sdk": "file:./plugin-sdk",
+        "@mhingston5/atlas-plugin-sdk": "^1.0.1",
         "ai": "^6.0.62",
         "ulid": "^3.0.2",
       },
@@ -44,7 +44,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@1.9.4", "", { "os": "win32", "cpu": "x64" }, "sha512-8Y5wMhVIPaWe6jw2H+KlEm4wP/f7EW3810ZLmDlrEEy5KvBsb9ECEfu/kMWD484ijfQ8+nIi0giMgu9g1UAuuA=="],
 
-    "@mhingston5/atlas-plugin-sdk": ["@mhingston5/atlas-plugin-sdk@file:plugin-sdk", { "devDependencies": { "@biomejs/biome": "^1.9.4", "typescript": "^5.9.3" }, "peerDependencies": { "typescript": "^5.0.0" } }],
+    "@mhingston5/atlas-plugin-sdk": ["@mhingston5/atlas-plugin-sdk@1.0.1", "", { "peerDependencies": { "typescript": "^5.0.0" } }, "sha512-vlWV+jIU0yUviU7n1llu0CcBSUAErDOchsEyqc3mY+jzqaBEFUj97v43lUyD38K+C8yhtCQbFloE5E1727ddpw=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 

@@ -1,15 +1,20 @@
 # Atlas
 
-**Local, always-on personal AI gateway for durable knowledge work**
+**Local-first personal AI gateway with built-in quality verification**
 
-Atlas is a single-user, local-first system that ingests data, runs AI-powered
-workflows, and produces durable artifacts you can search, curate, and reuse.
+Atlas transforms AI from a black box into a systematic quality system. It runs
+AI-powered workflows that produce **verified artifacts**—not just outputs, but
+durable, traceable work products you can trust, search, and build upon.
+
+[![Tests](https://img.shields.io/badge/tests-261%20passing-brightgreen)]()
+[![Version](https://img.shields.io/badge/version-1.1.0-blue)]()
 
 **Why Atlas**
-- Visible cognition: traceable workflows and explicit checkpoints
-- Composable workflows: source → entity → workflow → artifact → workflow
-- Judgment amplification: humans stay in control, no autonomous runaway loops
-- Durable memory: artifacts + embeddings + weekly synthesis
+- **Quality-first**: Every artifact is verified against explicit criteria (ISC)
+- **Traceable**: Full provenance from sources → workflows → artifacts
+- **Self-improving**: Systematic reflection and learning from every execution
+- **Local & Private**: Your data stays on your machine
+- **Composable**: Workflows chain together: source → entity → workflow → artifact → workflow
 
 ## Quick Start
 
@@ -26,10 +31,12 @@ default (no API keys required).
 
 ## Core Concepts
 
-- **Artifacts**: durable outputs created by workflows
-- **Entities/Events**: source-ingested records + change history
-- **Workflows**: AI or deterministic jobs that generate artifacts
-- **Routing**: profile-based LLM selection with fallbacks
+- **Artifacts**: Durable outputs with automatic quality verification
+- **Entities/Events**: Source-ingested records with full change history
+- **Workflows**: AI or deterministic jobs that generate verified artifacts
+- **Routing**: Profile-based LLM selection with fallbacks and effort-based budgets
+- **ISC (Ideal State Criteria)**: Explicit, testable quality criteria for every artifact
+- **Reflection**: Auto-generated learning from every workflow execution
 
 ## Common Workflows
 
@@ -55,6 +62,7 @@ Full workflow docs and examples: `docs/`
 | `ATLAS_HARNESS_ENABLED` | Enable harness runtime | `false` |
 | `ATLAS_REQUIRE_APPROVAL_BY_DEFAULT` | Require approval for all workflows unless they explicitly succeed/fail | `false` |
 | `ATLAS_MEMORY_PATHS` | Comma-separated memory file paths | `MEMORY.md,memory` |
+| `ATLAS_OPENAI_API_ENABLED` | Enable OpenAI-compatible chat API | `true` |
 
 Full reference: `docs/configuration.md`
 
@@ -102,6 +110,31 @@ curl -X POST http://localhost:3000/jobs \
   -d '{"workflow_id":"brainstorm.v1","input":{"topic":"productivity"}}'
 ```
 
+### OpenAI-Compatible API
+
+Atlas provides an OpenAI-compatible chat completions API for interacting with workflows:
+
+```bash
+# Enable the API (default: true)
+export ATLAS_OPENAI_API_ENABLED=true
+
+# List available models
+curl http://localhost:3000/v1/models
+
+# Chat with Atlas
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "atlas-scratchpad",
+    "messages": [{"role": "user", "content": "What should I focus on?"}]
+  }'
+
+# Or use with OpenAI SDK
+# base_url: http://localhost:3000/v1
+```
+
+Full API docs: `docs/openai-api.md`
+
 Full API examples: `docs/api-examples.md` and `docs/curation.md`
 
 ## Architecture Snapshot
@@ -112,17 +145,145 @@ Sources → Entities/Events → Workflows → Artifacts → Other Workflows → 
 
 Versioning overview: `docs/VERSIONING.md`
 
-## Docs
+## Quality Features (PAI Integration)
 
-- `docs/README.md`
-- `docs/configuration.md`
-- `docs/workflow-authoring.md`
-- `docs/ai-integration.md`
-- `docs/provider-routing.md`
-- `docs/curation.md`
-- `docs/api-examples.md`
-- `docs/publishing.md`
-- `docs/alignment-checklist.md`
+Atlas includes systematic quality management through Ideal State Criteria (ISC)—a
+methodology for defining and verifying what "good" means for every artifact.
+
+### How It Works
+
+1. **Define Criteria**: Each artifact type has explicit quality criteria (e.g., "Summaries must have 3-5 key points")
+2. **Automatic Verification**: Artifacts are verified before emission using CLI, Grep, or Custom verifiers
+3. **Fail-Closed**: CRITICAL failures block artifact emission until fixed
+4. **Learn**: Systematic Q1/Q2/Q3 reflection improves future executions
+
+### Effort-Based Quality
+
+Control quality by choosing effort level:
+
+| Level | Budget | Quality | Use Case |
+|-------|--------|---------|----------|
+| INSTANT | <10s | Basic | Quick answers |
+| FAST | <1min | Standard | Simple tasks |
+| STANDARD | <2min | High (default) | Daily work |
+| EXTENDED | <8min | Very High | Important docs |
+| COMPREHENSIVE | <120min | Maximum | Deep investigations |
+
+```json
+// gateway.routing.json
+{
+  "profiles": {
+    "balanced": {
+      "effortLevel": "STANDARD",
+      "providers": ["openai"],
+      "models": ["gpt-4o"]
+    }
+  }
+}
+```
+
+### Example: Verified Summaries
+
+```typescript
+// Summary criteria ensure quality
+export const summaryISC: ISCDefinition = {
+  artifactType: "summary.note.v1",
+  idealCriteria: [
+    { id: "ISC-SUM-001", criterion: "Captures 3-5 key points",
+      priority: "CRITICAL", verify: { type: "CUSTOM", description: "Count key points" } },
+    { id: "ISC-SUM-002", criterion: "Has source attributions",
+      priority: "CRITICAL", verify: { type: "GREP", pattern: "\\[.*?\\]" } },
+    { id: "ISC-SUM-003", criterion: "100-300 words",
+      priority: "IMPORTANT", verify: { type: "CLI", command: "wc -w" } }
+  ],
+  antiCriteria: [
+    { id: "ISC-A-SUM-001", criterion: "No hallucinated facts",
+      priority: "CRITICAL", verify: { type: "CUSTOM", description: "Cross-reference sources" } }
+  ]
+};
+```
+
+Results: Summaries that **provably** meet criteria, not just "look good."
+
+### Persistent Documentation (PRDs)
+
+Every artifact gets a PRD—requirements stored as markdown with YAML frontmatter:
+- **Intent**: What problem this solves
+- **Constraints**: What must be true
+- **Decisions**: Why we chose this approach
+- **Iteration log**: How we got here
+
+```bash
+# View PRD for any artifact
+curl http://localhost:3000/api/v1/artifacts/{id}/prd
+```
+
+### Systematic Learning
+
+After each STANDARD+ execution, Atlas generates reflection:
+- **Q1**: What would I do differently?
+- **Q2**: What would a smarter workflow do?
+- **Q3**: What would a smarter Atlas do?
+
+Query reflections to identify patterns:
+```bash
+curl "http://localhost:3000/api/v1/reflections?workflow_id=brainstorm.v1"
+```
+
+### Adding ISC to Your Workflows
+
+See `docs/pai-integration.md` for full guide. Quick start:
+
+```typescript
+export const myWorkflow: WorkflowPlugin = {
+  id: "my.workflow.v1",
+  isc: myWorkflowISC,  // Attach criteria
+  async run(ctx, input, jobId) {
+    // Verification happens automatically on emitArtifact()
+    ctx.emitArtifact({ type: "my.artifact", content_md: result });
+  }
+};
+```
+
+## Documentation
+
+**Getting Started:**
+- `docs/README.md` - Overview and concepts
+- `docs/getting-started.md` - Step-by-step setup
+- `docs/configuration.md` - Environment variables and routing
+
+**Building Workflows:**
+- `docs/workflow-authoring.md` - Creating custom workflows
+- `docs/pai-integration.md` - Adding quality criteria (ISC)
+- `docs/curation.md` - Artifact management and deduplication
+
+**APIs:**
+- `docs/openai-api.md` - OpenAI-compatible chat API
+- `docs/api-examples.md` - API usage examples
+
+**Architecture:**
+- `docs/ARCHITECTURE.md` - System design
+- `docs/VERSIONING.md` - Version compatibility
+- `docs/alignment-checklist.md` - Safety considerations
+
+## What Makes Atlas Different
+
+**vs. ChatGPT/Claude Web UI:**
+- Atlas produces **durable, verifiable artifacts** you can search and reuse
+- **Traceable**: Every output has provenance (sources → workflow → criteria → reflection)
+- **Systematic**: Not ad-hoc; every artifact is verified against explicit criteria
+
+**vs. Other AI Workflow Tools:**
+- **Quality-first**: Built-in verification prevents "garbage in, garbage out"
+- **Self-improving**: Systematic reflection learns from every execution
+- **Local-first**: Your data never leaves your machine
+- **Deterministic**: Same inputs → same verification → reproducible outputs
+
+**vs. Traditional Pipelines:**
+- **AI-native**: Built for LLMs, not retrofitted
+- **Flexible**: Criteria can use LLMs for subjective evaluation
+- **Composable**: Workflows chain together naturally
+- **Human-in-loop**: Checkpoints for approval, not autonomous agents
 
 ## License
 

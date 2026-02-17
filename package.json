@@ -1,6 +1,6 @@
 {
   "name": "@mhingston5/atlas",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "module": "dist/index.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "ai": "^6.0.62",
-    "@mhingston5/atlas-plugin-sdk": "^1.0.1",
+    "@mhingston5/atlas-plugin-sdk": "^1.1.0",
     "ulid": "^3.0.2"
   }
 }

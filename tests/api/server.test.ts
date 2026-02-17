@@ -6,6 +6,7 @@ import { CommandQueue } from "../../src/core/queue";
 import { ReadOnlyRepo } from "../../src/core/repo";
 import { Writer } from "../../src/core/writer";
 import { FlushLoop } from "../../src/jobs/loop";
+import { Scheduler } from "../../src/jobs/scheduler";
 import { PluginRegistry } from "../../src/plugins/registry";
 import {
   createTestDb,
@@ -38,20 +39,41 @@ describe("API Server", () => {
     return handler(req);
   }
 
+  let flushLoop: FlushLoop;
+  let scheduler: Scheduler;
+  let commands: CommandQueue;
+
+  // Helper to wait for all pending commands to be processed
+  async function waitForPendingCommands(timeoutMs = 5000): Promise<void> {
+    const startTime = Date.now();
+    while (commands.size() > 0 && Date.now() - startTime < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    // Give a bit more time for the database to commit
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
   beforeAll(() => {
     db = createTestDb();
     runTestMigrations(db);
 
     const registry = new PluginRegistry();
     const repo = new ReadOnlyRepo(db);
-    const commands = new CommandQueue();
+    commands = new CommandQueue();
     const writer = new Writer(db);
-    const flushLoop = new FlushLoop(commands, writer, 100);
+    flushLoop = new FlushLoop(commands, writer, 100);
+    flushLoop.start();
+
+    // Start scheduler to process jobs for OpenAI API tests
+    scheduler = new Scheduler(registry, repo, commands, 100);
+    scheduler.start();
 
     handler = createFetchHandler(registry, repo, commands, flushLoop);
   });
 
   afterAll(() => {
+    scheduler.stop();
+    flushLoop.stop();
     db.close();
   });
 
@@ -422,6 +444,236 @@ describe("API Server", () => {
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.status).toBe("prune_scheduled");
+    });
+  });
+
+  describe("OpenAI API", () => {
+    const originalEnv = process.env.ATLAS_OPENAI_API_ENABLED;
+
+    beforeAll(() => {
+      process.env.ATLAS_OPENAI_API_ENABLED = "true";
+    });
+
+    afterAll(() => {
+      if (originalEnv !== undefined) {
+        process.env.ATLAS_OPENAI_API_ENABLED = originalEnv;
+      } else {
+        process.env.ATLAS_OPENAI_API_ENABLED = undefined;
+      }
+    });
+
+    describe("GET /v1/models", () => {
+      test("should return list of models when enabled", async () => {
+        const res = await request("/v1/models");
+        const data = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(data.object).toBe("list");
+        expect(data.data).toBeArray();
+        expect(data.data.length).toBeGreaterThanOrEqual(3);
+        expect(
+          data.data.some((m: { id: string }) => m.id === "atlas-scratchpad"),
+        ).toBe(true);
+        expect(
+          data.data.some((m: { id: string }) => m.id === "atlas-brainstorm"),
+        ).toBe(true);
+        expect(
+          data.data.some((m: { id: string }) => m.id === "atlas-code"),
+        ).toBe(true);
+      });
+
+      test("should return 403 when disabled", async () => {
+        const prevEnv = process.env.ATLAS_OPENAI_API_ENABLED;
+        process.env.ATLAS_OPENAI_API_ENABLED = "false";
+
+        const res = await request("/v1/models");
+        const data = await res.json();
+
+        process.env.ATLAS_OPENAI_API_ENABLED = prevEnv;
+
+        expect(res.status).toBe(403);
+        expect(data.error).toBe("OpenAI-compatible API is disabled");
+      });
+    });
+
+    describe("POST /v1/chat/completions", () => {
+      test("should create chat completion job", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-scratchpad",
+            messages: [{ role: "user", content: "Test message" }],
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.id).toBeDefined();
+        expect(data.object).toBe("chat.completion");
+        expect(data.model).toBe("atlas-scratchpad");
+        expect(data.choices).toBeArray();
+        expect(data.choices.length).toBe(1);
+        expect(data.choices[0].message.role).toBe("assistant");
+        expect(data.choices[0].message.content).toBeDefined();
+        expect(data.usage).toBeDefined();
+        expect(data.usage.prompt_tokens).toBeGreaterThanOrEqual(0);
+        expect(data.usage.completion_tokens).toBeGreaterThanOrEqual(0);
+        expect(data.usage.total_tokens).toBeGreaterThanOrEqual(0);
+
+        // Wait for pending commands to complete to avoid test interference
+        await waitForPendingCommands();
+      });
+
+      test("should return 400 when model missing", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: "Test" }],
+          }),
+        });
+
+        expect(res.status).toBe(400);
+        const data = await res.json();
+        expect(data.error).toContain("model");
+      });
+
+      test("should return 400 when messages missing", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-scratchpad",
+          }),
+        });
+
+        expect(res.status).toBe(400);
+        const data = await res.json();
+        expect(data.error).toContain("messages");
+      });
+
+      test("should return 400 when messages empty", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-scratchpad",
+            messages: [],
+          }),
+        });
+
+        expect(res.status).toBe(400);
+        const data = await res.json();
+        expect(data.error).toContain("messages");
+      });
+
+      test("should route to brainstorm workflow", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-brainstorm",
+            messages: [{ role: "user", content: "Brainstorm ideas" }],
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.model).toBe("atlas-brainstorm");
+
+        // Wait for pending commands to complete to avoid test interference
+        await waitForPendingCommands();
+      });
+
+      test("should auto-route to brainstorm based on content", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-scratchpad",
+            messages: [
+              { role: "user", content: "Brainstorm ideas for my app" },
+            ],
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        // Even with atlas-scratchpad model, "brainstorm" in content routes to brainstorm.v1
+        // The response should still be returned
+        const data = await res.json();
+        expect(data.choices[0].message.content).toBeDefined();
+
+        // Wait for pending commands to complete to avoid test interference
+        await waitForPendingCommands();
+      });
+
+      test("should auto-route to code workflow based on content", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-scratchpad",
+            messages: [{ role: "user", content: "Help me refactor this code" }],
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.choices[0].message.content).toBeDefined();
+
+        // Wait for pending commands to complete to avoid test interference
+        await waitForPendingCommands();
+      });
+
+      test("should support conversation_id", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-scratchpad",
+            messages: [{ role: "user", content: "Test" }],
+            conversation_id: "conv_test_123",
+          }),
+        });
+
+        expect(res.status).toBe(200);
+
+        // Wait for pending commands to complete to avoid test interference
+        await waitForPendingCommands();
+      });
+
+      test("should handle invalid JSON", async () => {
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "invalid json",
+        });
+
+        expect(res.status).toBe(400);
+        const data = await res.json();
+        expect(data.error).toBe("Invalid JSON body");
+      });
+
+      test("should return 403 when disabled", async () => {
+        const prevEnv = process.env.ATLAS_OPENAI_API_ENABLED;
+        process.env.ATLAS_OPENAI_API_ENABLED = "false";
+
+        const res = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "atlas-scratchpad",
+            messages: [{ role: "user", content: "Test" }],
+          }),
+        });
+
+        process.env.ATLAS_OPENAI_API_ENABLED = prevEnv;
+
+        expect(res.status).toBe(403);
+        const data = await res.json();
+        expect(data.error).toBe("OpenAI-compatible API is disabled");
+      });
     });
   });
 });

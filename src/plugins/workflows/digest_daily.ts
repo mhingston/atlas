@@ -39,7 +39,7 @@ export const digestDailyWorkflow: WorkflowPlugin = {
     const items = artifacts.map((artifact) => ({
       id: artifact.id,
       type: artifact.type,
-      title: artifact.title,
+      title: artifact.title ?? null,
       created_at: artifact.created_at,
     }));
 

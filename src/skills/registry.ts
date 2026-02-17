@@ -27,6 +27,9 @@ function parseFrontmatter(content: string): FrontmatterParseResult {
 
   for (; idx < lines.length; idx += 1) {
     const line = lines[idx];
+    if (!line) {
+      continue;
+    }
     if (line.trim() === "---") {
       idx += 1;
       break;
