@@ -287,4 +287,4 @@ export const myWorkflow: WorkflowPlugin = {
 
 ## License
 
-Private project
+MIT
