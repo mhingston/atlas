@@ -10,7 +10,7 @@ durable, traceable work products you can trust, search, and build upon.
 [![Version](https://img.shields.io/badge/version-1.1.0-blue)]()
 
 **Why Atlas**
-- **Quality-first**: Every artifact is verified against explicit criteria (ISC)
+- **Quality-first**: Every artifact is verified against explicit, testable quality criteria
 - **Traceable**: Full provenance from sources → workflows → artifacts
 - **Self-improving**: Systematic reflection and learning from every execution
 - **Local & Private**: Your data stays on your machine
@@ -35,7 +35,7 @@ default (no API keys required).
 - **Entities/Events**: Source-ingested records with full change history
 - **Workflows**: AI or deterministic jobs that generate verified artifacts
 - **Routing**: Profile-based LLM selection with fallbacks and effort-based budgets
-- **ISC (Ideal State Criteria)**: Explicit, testable quality criteria for every artifact
+- **Ideal State Criteria**: Explicit, testable quality criteria for every artifact
 - **Reflection**: Auto-generated learning from every workflow execution
 
 ## Common Workflows
@@ -62,7 +62,6 @@ Full workflow docs and examples: `docs/`
 | `ATLAS_HARNESS_ENABLED` | Enable harness runtime | `false` |
 | `ATLAS_REQUIRE_APPROVAL_BY_DEFAULT` | Require approval for all workflows unless they explicitly succeed/fail | `false` |
 | `ATLAS_MEMORY_PATHS` | Comma-separated memory file paths | `MEMORY.md,memory` |
-| `ATLAS_OPENAI_API_ENABLED` | Enable OpenAI-compatible chat API | `true` |
 
 Full reference: `docs/configuration.md`
 
@@ -115,9 +114,6 @@ curl -X POST http://localhost:3000/jobs \
 Atlas provides an OpenAI-compatible chat completions API for interacting with workflows:
 
 ```bash
-# Enable the API (default: true)
-export ATLAS_OPENAI_API_ENABLED=true
-
 # List available models
 curl http://localhost:3000/v1/models
 
@@ -145,9 +141,9 @@ Sources → Entities/Events → Workflows → Artifacts → Other Workflows → 
 
 Versioning overview: `docs/VERSIONING.md`
 
-## Quality Features (PAI Integration)
+## Quality Features
 
-Atlas includes systematic quality management through Ideal State Criteria (ISC)—a
+Atlas includes systematic quality management through Ideal State Criteria—a
 methodology for defining and verifying what "good" means for every artifact.
 
 ### How It Works
@@ -186,18 +182,18 @@ Control quality by choosing effort level:
 
 ```typescript
 // Summary criteria ensure quality
-export const summaryISC: ISCDefinition = {
+export const summaryCriteria: ISCDefinition = {
   artifactType: "summary.note.v1",
   idealCriteria: [
-    { id: "ISC-SUM-001", criterion: "Captures 3-5 key points",
+    { id: "CRITERIA-SUM-001", criterion: "Captures 3-5 key points",
       priority: "CRITICAL", verify: { type: "CUSTOM", description: "Count key points" } },
-    { id: "ISC-SUM-002", criterion: "Has source attributions",
+    { id: "CRITERIA-SUM-002", criterion: "Has source attributions",
       priority: "CRITICAL", verify: { type: "GREP", pattern: "\\[.*?\\]" } },
-    { id: "ISC-SUM-003", criterion: "100-300 words",
+    { id: "CRITERIA-SUM-003", criterion: "100-300 words",
       priority: "IMPORTANT", verify: { type: "CLI", command: "wc -w" } }
   ],
   antiCriteria: [
-    { id: "ISC-A-SUM-001", criterion: "No hallucinated facts",
+    { id: "ANTI-CRITERIA-SUM-001", criterion: "No hallucinated facts",
       priority: "CRITICAL", verify: { type: "CUSTOM", description: "Cross-reference sources" } }
   ]
 };
@@ -230,14 +226,14 @@ Query reflections to identify patterns:
 curl "http://localhost:3000/api/v1/reflections?workflow_id=brainstorm.v1"
 ```
 
-### Adding ISC to Your Workflows
+### Adding Quality Criteria to Your Workflows
 
-See `docs/pai-integration.md` for full guide. Quick start:
+See `docs/ai-integration.md` for the full guide. Quick start:
 
 ```typescript
 export const myWorkflow: WorkflowPlugin = {
   id: "my.workflow.v1",
-  isc: myWorkflowISC,  // Attach criteria
+  isc: myWorkflowCriteria,  // Attach quality criteria
   async run(ctx, input, jobId) {
     // Verification happens automatically on emitArtifact()
     ctx.emitArtifact({ type: "my.artifact", content_md: result });
@@ -254,7 +250,7 @@ export const myWorkflow: WorkflowPlugin = {
 
 **Building Workflows:**
 - `docs/workflow-authoring.md` - Creating custom workflows
-- `docs/pai-integration.md` - Adding quality criteria (ISC)
+- `docs/ai-integration.md` - Adding quality criteria
 - `docs/curation.md` - Artifact management and deduplication
 
 **APIs:**

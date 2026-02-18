@@ -8,16 +8,9 @@ Atlas exposes an OpenAI-compatible API that maps chat completion requests to Atl
 
 ## Configuration
 
-Enable the OpenAI-compatible API by setting the environment variable:
+The OpenAI-compatible API is available whenever Atlas is running.
 
 ```bash
-ATLAS_OPENAI_API_ENABLED=true
-```
-
-Add this to your `.env` file or export it before starting Atlas:
-
-```bash
-export ATLAS_OPENAI_API_ENABLED=true
 bun run start
 ```
 
@@ -222,12 +215,6 @@ Since Atlas is job-based, response times differ from traditional chat APIs:
 **Streaming:** Use `"stream": true` to see progress updates while waiting.
 
 ## Error Handling
-
-**403 Forbidden:**
-```json
-{"error": "OpenAI-compatible API is disabled"}
-```
-Enable with `ATLAS_OPENAI_API_ENABLED=true`
 
 **400 Bad Request:**
 ```json

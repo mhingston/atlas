@@ -393,4 +393,4 @@ This is expected behavior. Configure a real provider or use the mock for testing
 
 - [Configuration Guide](./configuration.md)
 - [Architecture Overview](./ARCHITECTURE.md)
-- [Creating Workflows](./workflows.md) (if exists)
+- [Creating Workflows](./workflow-authoring.md)

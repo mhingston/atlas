@@ -122,6 +122,6 @@ export default createPlugin({
 
 ## Resources
 
-- [Plugin SDK Documentation](../../plugin-sdk/README.md)
-- [Plugin Development Guide](../../docs/plugin-development.md)
-- [Core Plugin Loader](../../src/plugins/external/loader.ts)
+- [Plugin SDK Documentation](../plugin-sdk/README.md)
+- [Plugin Development Guide](../docs/plugin-development.md)
+- [Core Plugin Loader](../src/plugins/external/loader.ts)

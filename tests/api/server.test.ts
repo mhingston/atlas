@@ -448,22 +448,9 @@ describe("API Server", () => {
   });
 
   describe("OpenAI API", () => {
-    const originalEnv = process.env.ATLAS_OPENAI_API_ENABLED;
-
-    beforeAll(() => {
-      process.env.ATLAS_OPENAI_API_ENABLED = "true";
-    });
-
-    afterAll(() => {
-      if (originalEnv !== undefined) {
-        process.env.ATLAS_OPENAI_API_ENABLED = originalEnv;
-      } else {
-        process.env.ATLAS_OPENAI_API_ENABLED = undefined;
-      }
-    });
 
     describe("GET /v1/models", () => {
-      test("should return list of models when enabled", async () => {
+      test("should return list of models", async () => {
         const res = await request("/v1/models");
         const data = await res.json();
 
@@ -482,18 +469,6 @@ describe("API Server", () => {
         ).toBe(true);
       });
 
-      test("should return 403 when disabled", async () => {
-        const prevEnv = process.env.ATLAS_OPENAI_API_ENABLED;
-        process.env.ATLAS_OPENAI_API_ENABLED = "false";
-
-        const res = await request("/v1/models");
-        const data = await res.json();
-
-        process.env.ATLAS_OPENAI_API_ENABLED = prevEnv;
-
-        expect(res.status).toBe(403);
-        expect(data.error).toBe("OpenAI-compatible API is disabled");
-      });
     });
 
     describe("POST /v1/chat/completions", () => {
@@ -655,25 +630,6 @@ describe("API Server", () => {
         expect(data.error).toBe("Invalid JSON body");
       });
 
-      test("should return 403 when disabled", async () => {
-        const prevEnv = process.env.ATLAS_OPENAI_API_ENABLED;
-        process.env.ATLAS_OPENAI_API_ENABLED = "false";
-
-        const res = await request("/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "atlas-scratchpad",
-            messages: [{ role: "user", content: "Test" }],
-          }),
-        });
-
-        process.env.ATLAS_OPENAI_API_ENABLED = prevEnv;
-
-        expect(res.status).toBe(403);
-        const data = await res.json();
-        expect(data.error).toBe("OpenAI-compatible API is disabled");
-      });
     });
   });
 });
