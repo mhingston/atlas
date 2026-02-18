@@ -448,7 +448,6 @@ describe("API Server", () => {
   });
 
   describe("OpenAI API", () => {
-
     describe("GET /v1/models", () => {
       test("should return list of models", async () => {
         const res = await request("/v1/models");
@@ -468,7 +467,6 @@ describe("API Server", () => {
           data.data.some((m: { id: string }) => m.id === "atlas-code"),
         ).toBe(true);
       });
-
     });
 
     describe("POST /v1/chat/completions", () => {
@@ -629,7 +627,6 @@ describe("API Server", () => {
         const data = await res.json();
         expect(data.error).toBe("Invalid JSON body");
       });
-
     });
   });
 });

@@ -47,7 +47,7 @@ default (no API keys required).
 - Heartbeat (periodic check-in): `heartbeat.v1`
 - Skills inventory: `skills.inventory.v1`
 
-Full workflow docs and examples: `docs/`
+Full workflow docs and examples: [docs](./docs/README.md)
 
 ## Configuration
 
@@ -63,7 +63,7 @@ Full workflow docs and examples: `docs/`
 | `ATLAS_REQUIRE_APPROVAL_BY_DEFAULT` | Require approval for all workflows unless they explicitly succeed/fail | `false` |
 | `ATLAS_MEMORY_PATHS` | Comma-separated memory file paths | `MEMORY.md,memory` |
 
-Full reference: `docs/configuration.md`
+Full reference: [Configuration Guide](./docs/configuration.md)
 
 ### LLM Providers
 
@@ -92,7 +92,7 @@ bun run dev
 ```
 
 Routing profiles and custom provider selection:
-`docs/provider-routing.md`
+[Provider Routing Guide](./docs/provider-routing.md)
 
 ## API Quick Examples
 
@@ -129,9 +129,9 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 # base_url: http://localhost:3000/v1
 ```
 
-Full API docs: `docs/openai-api.md`
+Full API docs: [OpenAI-Compatible API](./docs/openai-api.md)
 
-Full API examples: `docs/api-examples.md` and `docs/curation.md`
+Full API examples: [API Examples](./docs/api-examples.md) and [Curation Guide](./docs/curation.md)
 
 ## Architecture Snapshot
 
@@ -139,7 +139,7 @@ Full API examples: `docs/api-examples.md` and `docs/curation.md`
 Sources → Entities/Events → Workflows → Artifacts → Other Workflows → Sinks
 ```
 
-Versioning overview: `docs/VERSIONING.md`
+Versioning overview: [Versioning Guide](./docs/VERSIONING.md)
 
 ## Quality Features
 
@@ -182,7 +182,7 @@ Control quality by choosing effort level:
 
 ```typescript
 // Summary criteria ensure quality
-export const summaryCriteria: ISCDefinition = {
+export const summaryCriteria = {
   artifactType: "summary.note.v1",
   idealCriteria: [
     { id: "CRITERIA-SUM-001", criterion: "Captures 3-5 key points",
@@ -201,16 +201,16 @@ export const summaryCriteria: ISCDefinition = {
 
 Results: Summaries that **provably** meet criteria, not just "look good."
 
-### Persistent Documentation (PRDs)
+### Persistent Requirement Documents
 
-Every artifact gets a PRD—requirements stored as markdown with YAML frontmatter:
+Every artifact gets a requirement document stored as markdown with YAML frontmatter:
 - **Intent**: What problem this solves
 - **Constraints**: What must be true
 - **Decisions**: Why we chose this approach
 - **Iteration log**: How we got here
 
 ```bash
-# View PRD for any artifact
+# View requirement document for any artifact
 curl http://localhost:3000/api/v1/artifacts/{id}/prd
 ```
 
@@ -228,7 +228,7 @@ curl "http://localhost:3000/api/v1/reflections?workflow_id=brainstorm.v1"
 
 ### Adding Quality Criteria to Your Workflows
 
-See `docs/ai-integration.md` for the full guide. Quick start:
+See the [AI Integration Guide](./docs/ai-integration.md) for the full guide. Quick start:
 
 ```typescript
 export const myWorkflow: WorkflowPlugin = {
@@ -244,23 +244,23 @@ export const myWorkflow: WorkflowPlugin = {
 ## Documentation
 
 **Getting Started:**
-- `docs/README.md` - Overview and concepts
-- `docs/getting-started.md` - Step-by-step setup
-- `docs/configuration.md` - Environment variables and routing
+- [Docs Index](./docs/README.md) - Overview and concepts
+- [Getting Started](./docs/getting-started.md) - Step-by-step setup
+- [Configuration Guide](./docs/configuration.md) - Environment variables and routing
 
 **Building Workflows:**
-- `docs/workflow-authoring.md` - Creating custom workflows
-- `docs/ai-integration.md` - Adding quality criteria
-- `docs/curation.md` - Artifact management and deduplication
+- [Workflow Authoring](./docs/workflow-authoring.md) - Creating custom workflows
+- [AI Integration Guide](./docs/ai-integration.md) - Adding quality criteria
+- [Curation Guide](./docs/curation.md) - Artifact management and deduplication
 
 **APIs:**
-- `docs/openai-api.md` - OpenAI-compatible chat API
-- `docs/api-examples.md` - API usage examples
+- [OpenAI-Compatible API](./docs/openai-api.md) - OpenAI-compatible chat API
+- [API Examples](./docs/api-examples.md) - API usage examples
 
 **Architecture:**
-- `docs/ARCHITECTURE.md` - System design
-- `docs/VERSIONING.md` - Version compatibility
-- `docs/alignment-checklist.md` - Safety considerations
+- [Architecture](./docs/ARCHITECTURE.md) - System design
+- [Versioning](./docs/VERSIONING.md) - Version compatibility
+- [Alignment Checklist](./docs/alignment-checklist.md) - Safety considerations
 
 ## What Makes Atlas Different
 

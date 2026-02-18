@@ -48,6 +48,6 @@ Create `atlas.config.json`:
 }
 ```
 
-See `plugin-development.md` for full details.
+See the [Plugin Development Guide](./plugin-development.md) for full details.
 
-More provider options: `ai-integration.md`
+More provider options: [AI Integration Guide](./ai-integration.md)
