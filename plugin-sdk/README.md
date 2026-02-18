@@ -322,7 +322,7 @@ MIT
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+See the [plugin development guide](../docs/plugin-development.md) for contribution and implementation guidance.
 
 ## Support
 

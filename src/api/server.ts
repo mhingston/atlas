@@ -61,25 +61,11 @@ export function createFetchHandler(
 
     // GET /v1/models (OpenAI-compatible)
     if (path === "/v1/models" && method === "GET") {
-      // Check if OpenAI API is enabled
-      if (process.env.ATLAS_OPENAI_API_ENABLED !== "true") {
-        return jsonResponse(
-          { error: "OpenAI-compatible API is disabled" },
-          403,
-        );
-      }
       return jsonResponse(getModels());
     }
 
     // POST /v1/chat/completions (OpenAI-compatible)
     if (path === "/v1/chat/completions" && method === "POST") {
-      // Check if OpenAI API is enabled
-      if (process.env.ATLAS_OPENAI_API_ENABLED !== "true") {
-        return jsonResponse(
-          { error: "OpenAI-compatible API is disabled" },
-          403,
-        );
-      }
       const body = await parseJsonBody(req);
       if (!body) {
         return jsonResponse({ error: "Invalid JSON body" }, 400);
